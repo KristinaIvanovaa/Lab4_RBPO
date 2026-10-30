@@ -1,0 +1,288 @@
+{
+  "info": {
+    "name": "Театральная касса — CRUD и бизнес-операции",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "adminEmail", "value": "" },
+    { "key": "adminPassword", "value": "" },
+    { "key": "customerEmail", "value": "" },
+    { "key": "customerPassword", "value": "TheatreCustomer2026!" },
+    { "key": "csrfToken", "value": "" },
+    { "key": "scenarioUserId", "value": "" },
+    { "key": "scenarioRunId", "value": "" },
+    { "key": "scenarioSecondUserId", "value": "" },
+    { "key": "scenarioPlayId", "value": "" },
+    { "key": "scenarioHallId", "value": "" },
+    { "key": "scenarioPerformanceId", "value": "" },
+    { "key": "scenarioTicketId", "value": "" },
+    { "key": "scenarioReservedTicketId", "value": "" },
+    { "key": "crudPlayId", "value": "" },
+    { "key": "crudRunId", "value": "" },
+    { "key": "crudHallId", "value": "" },
+    { "key": "crudUserId", "value": "" },
+    { "key": "crudPerformanceId", "value": "" },
+    { "key": "crudTicketId", "value": "" }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "{{adminEmail}}", "type": "string" },
+      { "key": "password", "value": "{{adminPassword}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": ["if (pm.collectionVariables.get('csrfToken')) pm.request.headers.upsert({ key: 'X-CSRF-TOKEN', value: pm.collectionVariables.get('csrfToken') });"]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Аутентификация и CUSTOMER",
+      "item": [
+        {
+          "name": "Без аутентификации: список пользователей (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Unauthorized', function () { pm.response.to.have.status(401); });"] } }
+          ]
+        },
+        {
+          "name": "1. Получить CSRF-токен",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/auth/csrf"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('csrfToken', pm.response.json().token);"] } }
+          ]
+        },
+        {
+          "name": "2. Зарегистрировать покупателя",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Покупатель\",\"email\":\"{{customerEmail}}\",\"password\":\"{{customerPassword}}\"}" },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('customerEmail', 'customer.' + Date.now() + '@example.com');"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Registered', function () { pm.response.to.have.status(201); });"] } }
+          ]
+        },
+        {
+          "name": "3. CUSTOMER просматривает представления",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{customerEmail}}", "type": "string" },
+                { "key": "password", "value": "{{customerPassword}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/performances"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Public performances', function () { pm.response.to.have.status(200); });"] } }
+          ]
+        },
+        {
+          "name": "4. CUSTOMER не может создавать спектакли (403)",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{customerEmail}}", "type": "string" },
+                { "key": "password", "value": "{{customerPassword}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"title\":\"Запрещённый спектакль\",\"durationMinutes\":90,\"ageRestriction\":0}" },
+            "url": "{{baseUrl}}/api/plays"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Forbidden', function () { pm.response.to.have.status(403); });"] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Сценарий: резервация, покупка, возврат, перенос и отмена",
+      "item": [
+        {
+          "name": "1. Зарегистрировать пользователя",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Покупатель сценария\",\"email\":\"scenario.one.{{scenarioRunId}}@example.com\",\"password\":\"TheatreScenario2026!\"}" },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioRunId', Date.now());"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioUserId', pm.response.json().id);"] } }
+          ]
+        },
+        {
+          "name": "2. Зарегистрировать второго пользователя",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioSecondUserId', pm.response.json().id);"] } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Второй покупатель\",\"email\":\"scenario.two.{{scenarioRunId}}@example.com\",\"password\":\"TheatreScenario2026!\"}" },
+            "url": "{{baseUrl}}/api/auth/register"
+          }
+        },
+        {
+          "name": "3. Создать спектакль",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioPlayId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"title\":\"Спектакль для сценария\",\"durationMinutes\":100,\"ageRestriction\":12}" },
+            "url": "{{baseUrl}}/api/plays"
+          }
+        },
+        {
+          "name": "4. Создать зал",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioHallId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Зал сценария {{scenarioRunId}}\",\"seatCount\":50}" },
+            "url": "{{baseUrl}}/api/theatre-halls"
+          }
+        },
+        {
+          "name": "5. Запланировать представление",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('scenarioStart', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 19));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioPerformanceId', pm.response.json().id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"playId\":{{scenarioPlayId}},\"hallId\":{{scenarioHallId}},\"startsAt\":\"{{scenarioStart}}\",\"basePrice\":1200}" },
+            "url": "{{baseUrl}}/api/performances"
+          }
+        },
+        {
+          "name": "6. Зарезервировать место",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioTicketId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"performanceId\":{{scenarioPerformanceId}},\"seatNumber\":1,\"userId\":{{scenarioUserId}}}" },
+            "url": "{{baseUrl}}/api/tickets"
+          }
+        },
+        {
+          "name": "7. Купить зарезервированный билет",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/operations/tickets/{{scenarioTicketId}}/purchase" }
+        },
+        {
+          "name": "8. Вернуть купленный билет",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/operations/tickets/{{scenarioTicketId}}/refund" }
+        },
+        {
+          "name": "9. Зарезервировать второе место",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('scenarioReservedTicketId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"performanceId\":{{scenarioPerformanceId}},\"seatNumber\":2,\"userId\":{{scenarioSecondUserId}}}" },
+            "url": "{{baseUrl}}/api/tickets"
+          }
+        },
+        {
+          "name": "10. Отменить резервацию",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/operations/tickets/{{scenarioReservedTicketId}}/cancel-reservation" }
+        },
+        {
+          "name": "11. Перенести представление",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('rescheduledStart', new Date(Date.now() + 8 * 86400000).toISOString().slice(0, 19));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"startsAt\":\"{{rescheduledStart}}\"}" },
+            "url": "{{baseUrl}}/api/operations/performances/{{scenarioPerformanceId}}/reschedule"
+          }
+        },
+        {
+          "name": "12. Отменить представление",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/operations/performances/{{scenarioPerformanceId}}/cancel" }
+        }
+      ]
+    },
+    {
+      "name": "CRUD: отдельные записи",
+      "item": [
+        {
+          "name": "1. Создать спектакль",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"title\":\"Спектакль CRUD {{crudRunId}}\",\"durationMinutes\":90,\"ageRestriction\":0}" }, "url": "{{baseUrl}}/api/plays" },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudRunId', Date.now());"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudPlayId', pm.response.json().id);"] } }
+          ]
+        },
+        {
+          "name": "2. Создать зал",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudHallId', pm.response.json().id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Зал CRUD {{crudRunId}}\",\"seatCount\":30}" }, "url": "{{baseUrl}}/api/theatre-halls" }
+        },
+        {
+          "name": "3. Зарегистрировать пользователя",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudUserId', pm.response.json().id);"] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Пользователь CRUD\",\"email\":\"crud.user.{{crudRunId}}@example.com\",\"password\":\"TheatreCrudUser2026!\"}" }, "url": "{{baseUrl}}/api/auth/register" }
+        },
+        {
+          "name": "4. Создать представление",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('crudStart', new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 19));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudPerformanceId', pm.response.json().id);"] } }
+          ],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"playId\":{{crudPlayId}},\"hallId\":{{crudHallId}},\"startsAt\":\"{{crudStart}}\",\"basePrice\":800}" }, "url": "{{baseUrl}}/api/performances" }
+        },
+        {
+          "name": "5. Создать билет",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('crudTicketId', pm.response.json().id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"performanceId\":{{crudPerformanceId}},\"seatNumber\":1,\"userId\":{{crudUserId}}}" }, "url": "{{baseUrl}}/api/tickets" }
+        },
+        { "name": "Список спектаклей", "request": { "method": "GET", "url": "{{baseUrl}}/api/plays" } },
+        { "name": "Получить спектакль", "request": { "method": "GET", "url": "{{baseUrl}}/api/plays/{{crudPlayId}}" } },
+        { "name": "Изменить спектакль", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"title\":\"Спектакль CRUD обновлён\"}" }, "url": "{{baseUrl}}/api/plays/{{crudPlayId}}" } },
+        { "name": "Список залов", "request": { "method": "GET", "url": "{{baseUrl}}/api/theatre-halls" } },
+        { "name": "Получить зал", "request": { "method": "GET", "url": "{{baseUrl}}/api/theatre-halls/{{crudHallId}}" } },
+        { "name": "Изменить зал", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"seatCount\":40}" }, "url": "{{baseUrl}}/api/theatre-halls/{{crudHallId}}" } },
+        { "name": "Список пользователей", "request": { "method": "GET", "url": "{{baseUrl}}/api/users" } },
+        { "name": "Получить пользователя", "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{crudUserId}}" } },
+        { "name": "Изменить пользователя", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Пользователь CRUD обновлён\"}" }, "url": "{{baseUrl}}/api/users/{{crudUserId}}" } },
+        { "name": "Список представлений", "request": { "method": "GET", "url": "{{baseUrl}}/api/performances" } },
+        { "name": "Получить представление", "request": { "method": "GET", "url": "{{baseUrl}}/api/performances/{{crudPerformanceId}}" } },
+        { "name": "Изменить цену представления", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"basePrice\":850}" }, "url": "{{baseUrl}}/api/performances/{{crudPerformanceId}}" } },
+        { "name": "Список билетов", "request": { "method": "GET", "url": "{{baseUrl}}/api/tickets" } },
+        { "name": "Получить билет", "request": { "method": "GET", "url": "{{baseUrl}}/api/tickets/{{crudTicketId}}" } },
+        { "name": "Изменить место билета", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"seatNumber\":2}" }, "url": "{{baseUrl}}/api/tickets/{{crudTicketId}}" } },
+        { "name": "Удалить билет", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/tickets/{{crudTicketId}}" } },
+        { "name": "Удалить представление", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/performances/{{crudPerformanceId}}" } },
+        { "name": "Удалить спектакль", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/plays/{{crudPlayId}}" } },
+        { "name": "Удалить зал", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/theatre-halls/{{crudHallId}}" } },
+        { "name": "Удалить пользователя", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/users/{{crudUserId}}" } }
+      ]
+    }
+  ]
+}
